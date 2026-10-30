@@ -425,7 +425,7 @@ static void serve_client(int client)
 	int err;
 
 	/* Drop silent clients so they can't hold the single connection slot */
-	zsock_setsockopt(client, ZSOCK_SOL_SOCKET, ZSOCK_SO_RCVTIMEO, &idle, sizeof(idle));
+	zsock_setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &idle, sizeof(idle));
 
 	do {
 		err = handle_request(client);

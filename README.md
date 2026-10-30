@@ -45,18 +45,27 @@ west flash
 
 **Option B: minimal workspace from this repo's `west.yml`** (Zephyr v4.2.0 plus the STM32 HAL only)
 
+The workspace lives in `~/modbus-ws` and links to this repo, so there is only
+one copy of the code. The workspace config is written by hand because `west init -l`
+follows the symlink and would create the workspace in this repo's parent directory.
+
 ```sh
-pip install west
 mkdir ~/modbus-ws && cd ~/modbus-ws
-git clone /data/Mod-Bus Mod-Bus      # or your remote URL
-west init -l Mod-Bus
-west update
-west zephyr-export
+ln -s /data/Mod-Bus Mod-Bus
+mkdir .west && printf '[manifest]\npath = Mod-Bus\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n' > .west/config
+
+python3 -m venv .venv && . .venv/bin/activate
+pip install west ninja
+west update --narrow -o=--depth=1      # about 1.6 GB
 pip install -r zephyr/scripts/requirements-base.txt
-cd Mod-Bus
-west build -b nucleo_f429zi . -p
-west flash
+west zephyr-export
+
+west build -b nucleo_f429zi Mod-Bus -d build -p
+west flash -d build
 ```
+
+For later sessions, `cd ~/modbus-ws && . .venv/bin/activate` (plus the toolchain
+exports below), then `west build -d build` to rebuild.
 
 Toolchain: install the Zephyr SDK, **or** reuse an existing Arm GNU toolchain:
 
@@ -75,7 +84,7 @@ Since STM32CubeProgrammer is installed, `west flash -r stm32cubeprogrammer` also
 The default is a static address of **192.168.1.50/24**, set in `prj.conf`. Change
 it to match your network, or:
 
-- **DHCP:** `west build -b nucleo_f429zi . -p -- -DEXTRA_CONF_FILE=dhcp.conf`. The leased
+- **DHCP:** `west build -b nucleo_f429zi Mod-Bus -d build -p -- -DEXTRA_CONF_FILE=dhcp.conf`. The leased
   address is logged on the serial console.
 - **Direct to PC:** give the PC's wired port a static address in the same subnet,
   for example `192.168.1.10/24`.
