@@ -1,0 +1,4 @@
+/* Internal die temperature sensor (read through ADC1) -> input register 0 */
+&die_temp {
+	status = "okay";
+};

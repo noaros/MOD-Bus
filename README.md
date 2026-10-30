@@ -1,1 +1,135 @@
 # MOD-Bus
+
+A Modbus TCP "I/O panel" demo for the **NUCLEO-F429ZI**, built on **Zephyr RTOS**.
+The board serves Modbus TCP on port 502 over its on-board Ethernet and exposes its
+LEDs, user button, die temperature and some runtime counters as Modbus data.
+
+## Register map (unit ID 1, zero-based addresses)
+
+| Table | Addr | Meaning | Access |
+|---|---|---|---|
+| Coils | 0 / 1 / 2 | LD1 green / LD2 blue / LD3 red | R/W |
+| Discrete inputs | 0 | User button B1 (1 = pressed) | R |
+| Input registers | 0 | Die temperature, 0.1 °C, signed (`0x8000` = unavailable) | R |
+| | 1, 2 | Uptime in seconds, 32-bit, high word first | R |
+| | 3 | Requests served (wraps at 65535) | R |
+| | 4 | Button presses (wraps) | R |
+| | 5 | Status bits: bit0 watchdog tripped, bit1 temperature unavailable | R |
+| Holding registers | 0 | Blink period in ms: `0` = steady, `50`–`5000` = "on" LEDs blink | R/W |
+| | 1 | Comms watchdog in s: `0` = off, `1`–`3600` | R/W |
+| | 2–7 | Scratch registers (any value) | R/W |
+
+**Comms watchdog:** if holding register 1 is non-zero and no request arrives for
+that many seconds, all coils are forced off and status bit 0 is set. Writing any
+coil clears the flag.
+
+Out-of-range addresses or values get a Modbus exception response.
+The server answers whatever unit ID the client sends and echoes it back.
+
+## Hardware
+
+- NUCLEO-F429ZI and a micro-USB cable to the ST-LINK port (CN1)
+- Ethernet cable to your router/switch, or directly to your PC
+
+## Build and flash
+
+You need a Zephyr workspace. Pick one of these options:
+
+**Option A: you already have a Zephyr workspace** (for example `~/zephyrproject`)
+
+```sh
+cd ~/zephyrproject
+west build -b nucleo_f429zi /data/Mod-Bus -p
+west flash
+```
+
+**Option B: minimal workspace from this repo's `west.yml`** (Zephyr v4.2.0 plus the STM32 HAL only)
+
+```sh
+pip install west
+mkdir ~/modbus-ws && cd ~/modbus-ws
+git clone /data/Mod-Bus Mod-Bus      # or your remote URL
+west init -l Mod-Bus
+west update
+west zephyr-export
+pip install -r zephyr/scripts/requirements-base.txt
+cd Mod-Bus
+west build -b nucleo_f429zi . -p
+west flash
+```
+
+Toolchain: install the Zephyr SDK, **or** reuse an existing Arm GNU toolchain:
+
+```sh
+export ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb
+export GNUARMEMB_TOOLCHAIN_PATH=~/arm15.3
+```
+
+Since STM32CubeProgrammer is installed, `west flash -r stm32cubeprogrammer` also works.
+
+**Serial console:** the ST-LINK virtual COM port runs at 115200 8N1, usually
+`/dev/ttyACM0`. Use for example `picocom -b 115200 /dev/ttyACM0`.
+
+## Network setup
+
+The default is a static address of **192.168.1.50/24**, set in `prj.conf`. Change
+it to match your network, or:
+
+- **DHCP:** `west build -b nucleo_f429zi . -p -- -DEXTRA_CONF_FILE=dhcp.conf`. The leased
+  address is logged on the serial console.
+- **Direct to PC:** give the PC's wired port a static address in the same subnet,
+  for example `192.168.1.10/24`.
+
+Check that the board is reachable with `ping 192.168.1.50`.
+
+## Try it
+
+`tools/mbclient.py` is a dependency-free client. Add `-v` to see the raw frames on the wire.
+
+```sh
+export MODBUS_HOST=192.168.1.50
+./tools/mbclient.py status          # dump everything
+./tools/mbclient.py coil 0 on       # green LED on
+./tools/mbclient.py blink 250       # lit LEDs blink at 4 Hz
+./tools/mbclient.py watchdog 10     # outputs off after 10 s of silence
+./tools/mbclient.py monitor         # live view; press the blue button
+./tools/mbclient.py -v read ir 0 6  # raw read with frame hex dump
+./tools/mbclient.py blink 10        # -> exception 0x02 (value rejected)
+```
+
+With `mbpoll`, note that it uses one-based references by default, so `-r 1` means address 0:
+
+```sh
+mbpoll -m tcp -a 1 -t 0 -r 1 -c 3 -1 192.168.1.50     # read coils
+mbpoll -m tcp -a 1 -t 0 -r 2 192.168.1.50 1           # blue LED on
+mbpoll -m tcp -a 1 -t 3 -r 1 -c 6 -1 192.168.1.50     # input registers
+```
+
+Wireshark decodes the traffic natively. Use the filter `mbtcp`.
+
+## How it works
+
+Zephyr's Modbus subsystem provides the server logic (function codes, exceptions)
+but has no TCP transport. `src/main.c` therefore runs a small socket server that:
+
+1. reads the 7-byte MBAP header and the function code, and validates the length,
+2. passes the request to the Modbus server through a RAW interface (`RAW_0`),
+3. waits for the response callback, re-adds the MBAP header and sends it back.
+
+A separate low-priority thread drives the LEDs and blinking, counts button
+presses, samples the die temperature once per second and runs the comms watchdog.
+
+Limitations: the server handles one TCP client at a time. A client that stays
+idle for 30 s is disconnected.
+
+## Layout
+
+```
+CMakeLists.txt               Zephyr app definition
+prj.conf                     Kconfig: networking, Modbus, peripherals
+dhcp.conf                    optional DHCP overlay config
+boards/nucleo_f429zi.overlay enables the die temperature sensor
+src/main.c                   firmware
+tools/mbclient.py            PC-side test client
+west.yml                     optional minimal west manifest
+```
