@@ -1,12 +1,6 @@
 # Modbus
 
-A Modbus TCP "I/O panel" demo for the **NUCLEO-F429ZI**, built on **Zephyr RTOS**.
-The board serves Modbus TCP on port 502 over its on-board Ethernet and exposes its
-LEDs, user button, die temperature and some runtime counters as Modbus data.
-
-## How the project grew
-
-The project was built in small steps. Each step left a working board.
+My new preferred way of writing software with Claude is in terms of many small iterations, not unlike how I would have done it without Claude. However, I accidentally created this project in one pass. I then used Claude to make up iterations for it after the fact, and used this as a basis and learning, asking further questions.
 
 1. **Blinky over the network.** Started from a bare Zephyr app on the NUCLEO-F429ZI
    with Ethernet on a static IP. The goal was just a successful `ping 192.168.1.50`.
@@ -43,6 +37,13 @@ The project was built in small steps. Each step left a working board.
     TIME_WAIT, and after three of them in a row the 4 default slots were used up
     and new clients were refused. Raised `CONFIG_NET_MAX_CONN` and
     `CONFIG_NET_MAX_CONTEXTS` to leave headroom.
+
+=====================================================================
+
+
+A Modbus TCP "I/O panel" demo for the **NUCLEO-F429ZI**, built on **Zephyr RTOS**.
+The board serves Modbus TCP on port 502 over its on-board Ethernet and exposes its
+LEDs, user button, die temperature and some runtime counters as Modbus data.
 
 ## Register map (unit ID 1, zero-based addresses)
 
