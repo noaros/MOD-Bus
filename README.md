@@ -1,6 +1,6 @@
 # Modbus
 
-My new preferred way of writing software with Claude is in terms of many small iterations, not unlike how I would have done it without Claude. However, I accidentally created this project in one pass. I then used Claude to make up iterations for it after the fact, and used this as a basis and learning, asking further questions.
+My new preferred way of writing software with Claude is in terms of many small iterations, not unlike how I would have done it without Claude. However, I accidentally created this project in one pass. I then used Claude to make up iterations for it after the fact, and used this as a basis for learning, asking further questions.
 
 1. **Blinky over the network.** Started from a bare Zephyr app on the NUCLEO-F429ZI
    with Ethernet on a static IP. The goal was just a successful `ping 192.168.1.50`.
