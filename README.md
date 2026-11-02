@@ -1,8 +1,48 @@
-# MOD-Bus
+# Modbus
 
 A Modbus TCP "I/O panel" demo for the **NUCLEO-F429ZI**, built on **Zephyr RTOS**.
 The board serves Modbus TCP on port 502 over its on-board Ethernet and exposes its
 LEDs, user button, die temperature and some runtime counters as Modbus data.
+
+## How the project grew
+
+The project was built in small steps. Each step left a working board.
+
+1. **Blinky over the network.** Started from a bare Zephyr app on the NUCLEO-F429ZI
+   with Ethernet on a static IP. The goal was just a successful `ping 192.168.1.50`.
+2. **Raw TCP echo on port 502.** Added a single-client socket loop that accepted a
+   connection and echoed bytes back. This proved that the TCP stack and the
+   LAN8742 PHY worked before any Modbus code was involved.
+3. **MBAP framing.** Taught the loop to read the 7-byte MBAP header and the function
+   code, to check the length field and to drop malformed frames. Replies were
+   still hard-coded.
+4. **Zephyr Modbus server through a RAW interface.** Connected the socket loop to
+   Zephyr's Modbus subsystem (`RAW_0`). Requests are passed in, and the response
+   callback re-adds the MBAP header. The first real function: coils 0–2 drive the
+   three LEDs.
+5. **Inputs.** Added the user button as discrete input 0, and input registers for
+   uptime, request count and button presses.
+6. **Die temperature.** Enabled the internal temperature sensor through a board
+   overlay and exposed it in 0.1 °C, with `0x8000` and a status bit for when it
+   is unavailable.
+7. **Holding registers and the I/O thread.** Moved the LED handling into a
+   low-priority thread and added the blink period register and scratch registers.
+   Out-of-range writes return Modbus exceptions.
+8. **Comms watchdog.** Holding register 1 sets a timeout. When no request arrives
+   within it, the outputs are forced off and status bit 0 is set. Also added a
+   30 s idle disconnect so that a stale client can't block the server.
+9. **PC-side client.** Wrote `tools/mbclient.py`, a dependency-free client with
+   `status`, `monitor`, `coil`, `blink` and `watchdog` commands, raw reads and
+   writes, and `-v` frame dumps for debugging.
+10. **DHCP option.** Added `dhcp.conf` as an overlay so that the board can join an
+    existing LAN without editing `prj.conf`.
+11. **Zephyr v4.2.0 and a minimal workspace.** Updated the socket option names
+    for v4.2.0. Added `west.yml` so that a workspace can be created with only
+    Zephyr and the STM32 HAL.
+12. **Connection limits.** Connections that the board closed itself waited in
+    TIME_WAIT, and after three of them in a row the 4 default slots were used up
+    and new clients were refused. Raised `CONFIG_NET_MAX_CONN` and
+    `CONFIG_NET_MAX_CONTEXTS` to leave headroom.
 
 ## Register map (unit ID 1, zero-based addresses)
 
@@ -39,7 +79,7 @@ You need a Zephyr workspace. Pick one of these options:
 
 ```sh
 cd ~/zephyrproject
-west build -b nucleo_f429zi /data/Mod-Bus -p
+west build -b nucleo_f429zi /data/Modbus -p
 west flash
 ```
 
@@ -51,8 +91,8 @@ follows the symlink and would create the workspace in this repo's parent directo
 
 ```sh
 mkdir ~/modbus-ws && cd ~/modbus-ws
-ln -s /data/Mod-Bus Mod-Bus
-mkdir .west && printf '[manifest]\npath = Mod-Bus\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n' > .west/config
+ln -s /data/Modbus Modbus
+mkdir .west && printf '[manifest]\npath = Modbus\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n' > .west/config
 
 python3 -m venv .venv && . .venv/bin/activate
 pip install west ninja
@@ -60,7 +100,7 @@ west update --narrow -o=--depth=1      # about 1.6 GB
 pip install -r zephyr/scripts/requirements-base.txt
 west zephyr-export
 
-west build -b nucleo_f429zi Mod-Bus -d build -p
+west build -b nucleo_f429zi Modbus -d build -p
 west flash -d build
 ```
 
@@ -84,7 +124,7 @@ Since STM32CubeProgrammer is installed, `west flash -r stm32cubeprogrammer` also
 The default is a static address of **192.168.1.50/24**, set in `prj.conf`. Change
 it to match your network, or:
 
-- **DHCP:** `west build -b nucleo_f429zi Mod-Bus -d build -p -- -DEXTRA_CONF_FILE=dhcp.conf`. The leased
+- **DHCP:** `west build -b nucleo_f429zi Modbus -d build -p -- -DEXTRA_CONF_FILE=dhcp.conf`. The leased
   address is logged on the serial console.
 - **Direct to PC:** give the PC's wired port a static address in the same subnet,
   for example `192.168.1.10/24`.
